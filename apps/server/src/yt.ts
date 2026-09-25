@@ -46,6 +46,21 @@ type YtFormat = {
   has_audio?: boolean;
   drm_families?: string[];
   audio_sample_rate_string?: string;
+  /** Зашифрованная ссылка: YouTube отдаёт её вместо url, если нужен n-трансформ. */
+  signature_cipher?: string;
+  cipher?: string;
+  /** Метод youtubei.js: превращает signature_cipher в готовый url. */
+  decipher?: (player?: unknown) => Promise<string>;
+};
+
+/** Минимальный контракт JS-player'а, который нам нужен для расшифровки. */
+type DecipherPlayer = {
+  decipher: (
+    url?: string,
+    signatureCipher?: string,
+    cipher?: string,
+    cache?: Map<string, string>,
+  ) => Promise<string>;
 };
 
 /** Лениво-созданная сессия (как у видео-инфо): объект с getContinuation. */
@@ -55,7 +70,44 @@ interface FeedLike {
 }
 
 const RETRIES = 2;
-const PLAYER_CLIENTS = ['ANDROID_VR', 'ANDROID'] as const;
+
+/** Player-клиенты InnerTube, которые понимает youtubei.js. */
+export const KNOWN_PLAYER_CLIENTS = [
+  'ANDROID_VR',
+  'ANDROID',
+  'IOS',
+  'TV',
+  'TV_SIMPLY',
+  'TV_EMBEDDED',
+  'MWEB',
+  'WEB',
+  'WEB_EMBEDDED',
+] as const;
+
+export type PlayerClient = (typeof KNOWN_PLAYER_CLIENTS)[number];
+
+/**
+ * Порядок фолбэков по умолчанию. ANDROID_VR и TV отдают ссылки напрямую и не
+ * требуют PO-токенов — с датацентрового IP именно они обычно не бот-гейтятся.
+ */
+const DEFAULT_PLAYER_CLIENTS: PlayerClient[] = [
+  'ANDROID_VR',
+  'TV',
+  'TV_SIMPLY',
+  'ANDROID',
+  'IOS',
+  'MWEB',
+];
+
+/** Список фолбэк-клиентов из env PLAYER_CLIENTS (через запятую), иначе дефолтный. */
+export function playerClients(): PlayerClient[] {
+  const parsed = (process.env.PLAYER_CLIENTS ?? '')
+    .split(',')
+    .map((s) => s.trim().toUpperCase())
+    .filter((s): s is PlayerClient => (KNOWN_PLAYER_CLIENTS as readonly string[]).includes(s));
+  const list = [...new Set(parsed)];
+  return list.length > 0 ? list : DEFAULT_PLAYER_CLIENTS;
+}
 
 /** Сессии кэшируются по стране (gl), чтобы не плодить их на каждый запрос. */
 const sessions = new Map<string, Promise<Innertube | undefined>>();
@@ -214,13 +266,61 @@ function hasPlayableVideo(formats: VideoFormat[]): boolean {
   return formats.some((f) => f.hasVideo && !f.isProtected && !!f.url);
 }
 
+/**
+ * YouTube часто вместо готового url присылает signatureCipher. Такой поток
+ * играбелен, но требует расшифровки через JS player (n-трансформ) — без неё все
+ * форматы выглядят «без url», и прокси считал это бот-гейтом. Расшифровываем на месте.
+ *
+ * @returns сколько форматов получили url
+ */
+export async function resolveFormatUrls(info: unknown, player?: DecipherPlayer): Promise<number> {
+  if (!player) return 0;
+  const streaming = (info as { streaming_data?: Record<string, YtFormat[] | undefined> })?.streaming_data;
+  const list = [...(streaming?.adaptive_formats ?? []), ...(streaming?.formats ?? [])];
+
+  let resolved = 0;
+  await Promise.all(list.map(async (f) => {
+    if (f.url) return;
+    if (!f.signature_cipher && !f.cipher) return;
+    // Форматы youtubei.js умеют сами; на сырых объектах зовём player напрямую.
+    const decipher = typeof f.decipher === 'function'
+      ? f.decipher.bind(f)
+      : () => player.decipher(f.url, f.signature_cipher, f.cipher);
+    try {
+      const url = await decipher(player);
+      if (url) {
+        f.url = url;
+        resolved++;
+      }
+    } catch (err) {
+      console.warn(`[yt] не удалось расшифровать itag ${f.itag}:`, err instanceof Error ? err.message : err);
+    }
+  }));
+  return resolved;
+}
+
 export async function getPlayer(id: string): Promise<PlayerFormats> {
   const yt = await getInnertube();
   if (!yt) throw new Error('YouTube is not reachable');
+  const player = (yt.session as { player?: DecipherPlayer }).player;
 
   return withRetry(async () => {
     let result: PlayerFormats | undefined;
     let lastError: unknown;
+
+    /** Расшифровывает ссылки, превращает ответ в наш DTO и пишет диагностику. */
+    const attempt = async (info: unknown, source: string): Promise<PlayerFormats> => {
+      const deciphered = await resolveFormatUrls(info, player);
+      const parsed = extractPlayer(info);
+      const playable = parsed.formats.filter((f) => f.hasVideo && !f.isProtected && !!f.url).length;
+      console.log(
+        `[yt] player ${id} [${source}]: playability=${parsed.meta.playability}` +
+        `${parsed.meta.playabilityReason ? ` (${parsed.meta.playabilityReason})` : ''}` +
+        `, ссылок с URL: ${playable}/${parsed.formats.length}` +
+        `${deciphered > 0 ? `, расшифровано: ${deciphered}` : ''}`,
+      );
+      return parsed;
+    };
 
     try {
       const info = await yt.getInfo(id);
@@ -229,17 +329,17 @@ export async function getPlayer(id: string): Promise<PlayerFormats> {
           .addToWatchHistory?.()
           .catch(() => undefined);
       }
-      result = extractPlayer(info);
+      result = await attempt(info, 'WEB');
       if (hasPlayableVideo(result.formats)) return result;
     } catch (err) {
       lastError = err;
       console.warn('[yt] WEB player client failed:', err instanceof Error ? err.message : err);
     }
 
-    for (const client of PLAYER_CLIENTS) {
+    for (const client of playerClients()) {
       try {
         const info = await yt.getBasicInfo(id, { client });
-        result = extractPlayer(info);
+        result = await attempt(info, client);
         if (hasPlayableVideo(result.formats)) return result;
       } catch (err) {
         lastError = err;

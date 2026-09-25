@@ -81,6 +81,34 @@ docker compose -f deploy/docker-compose.yml up --build
 
 Текущий режим и доступность YouTube видны в `GET /api/v1/health` (`demoMode`, `youtubeReachable`, `proxyStreams`).
 
+### Почему с датацентра может не быть реальных потоков
+
+YouTube режет два разных случая, и в логах они выглядят одинаково («форматы есть, ссылок нет»):
+
+1. **Ссылок нет вообще** — бот-гейт по IP/клиенту. Лечится сменой player-клиента InnerTube.
+2. **YouTube прислал `signatureCipher` вместо `url`** — поток играбелен, его надо расшифровать через JS player'а (n-трансформ). Backend это делает сам (`resolveFormatUrls` в `apps/server/src/yt.ts`).
+
+Порядок фолбэков: сначала WEB, затем клиенты из `PLAYER_CLIENTS`. По умолчанию `ANDROID_VR,TV,TV_SIMPLY,ANDROID,IOS,MWEB` — первые не требуют PO-токенов и обычно не бот-гейтятся с датацентра.
+
+Диагностика прямо на сервере (показывает, какой клиент реально отдаёт ссылки с этого IP):
+
+```bash
+docker compose -f deploy/docker-compose.yml exec server node apps/server/dist/debug-yt.js dQw4w9WgXcQ
+```
+
+```
+WEB            OK                 ссылок:  0/27  видео:  0  макс:    —p расшифровано:  0
+ANDROID_VR     OK                 ссылок: 25/25  видео: 20  макс: 2160p расшифровано:  0
+```
+
+Если в колонке «ссылок» ноль у всех клиентов — нужен residential-прокси для исходящих запросов (настраивается на уровне Docker/VPN, env у backend'а для этого нет). Если ссылки есть, но пустые — проблема в расшифровке, смотрите логи `docker compose -f deploy/docker-compose.yml logs -f server`.
+
+Свой порядок клиентов без пересборки:
+
+```bash
+PLAYER_CLIENTS=ANDROID_VR,ANDROID,TV_SIMPLY docker compose -f deploy/docker-compose.yml up -d
+```
+
 Запуск в Docker:
 
 ```bash

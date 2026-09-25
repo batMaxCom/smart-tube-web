@@ -1,5 +1,5 @@
-import { describe, expect, it } from 'vitest';
-import { playabilityOf, toVideo, extractPlayer } from './yt.js';
+import { afterEach, describe, expect, it } from 'vitest';
+import { playabilityOf, playerClients, resolveFormatUrls, toVideo, extractPlayer } from './yt.js';
 
 describe('playabilityOf', () => {
   it('maps statuses to our playability', () => {
@@ -104,5 +104,71 @@ describe('extractPlayer', () => {
     });
     expect(out.formats).toEqual([]);
     expect(out.meta.playability).toBe('unavailable');
+  });
+});
+
+describe('resolveFormatUrls', () => {
+  const player = {
+    decipher: async (url?: string, signatureCipher?: string) =>
+      `${signatureCipher ?? url}#deciphered`,
+  };
+
+  it('расшифровывает форматы, пришедшие как signatureCipher', async () => {
+    const info: {
+      streaming_data: {
+        adaptive_formats: { itag: number; signature_cipher: string; url?: string }[];
+        formats: { itag: number; url: string }[];
+      };
+    } = {
+      streaming_data: {
+        adaptive_formats: [{ itag: 137, signature_cipher: 's=abc&url=x' }],
+        formats: [{ itag: 18, url: 'https://direct' }],
+      },
+    };
+    const resolved = await resolveFormatUrls(info, player);
+    expect(resolved).toBe(1);
+    expect(info.streaming_data.adaptive_formats[0].url).toContain('#deciphered');
+    // формат с готовым url не трогаем
+    expect(info.streaming_data.formats[0].url).toBe('https://direct');
+  });
+
+  it('не падает без player и на форматах без ссылки', async () => {
+    const info = { streaming_data: { adaptive_formats: [{ itag: 137 }] } };
+    expect(await resolveFormatUrls(info, undefined)).toBe(0);
+    expect(await resolveFormatUrls(info, player)).toBe(0);
+    expect(await resolveFormatUrls({}, player)).toBe(0);
+  });
+
+  it('ошибка расшифровки не роняет остальные форматы', async () => {
+    const boom = {
+      decipher: async (url?: string) => {
+        if (!url) throw new Error('no player js');
+        return url;
+      },
+    };
+    const info = {
+      streaming_data: { adaptive_formats: [{ itag: 137, signature_cipher: 's=a' }] },
+    };
+    expect(await resolveFormatUrls(info, boom)).toBe(0);
+  });
+});
+
+describe('playerClients', () => {
+  const env = process.env.PLAYER_CLIENTS;
+
+  afterEach(() => {
+    if (env === undefined) delete process.env.PLAYER_CLIENTS;
+    else process.env.PLAYER_CLIENTS = env;
+  });
+
+  it('по умолчанию начинает с клиентов без PO-токена', () => {
+    delete process.env.PLAYER_CLIENTS;
+    expect(playerClients()[0]).toBe('ANDROID_VR');
+    expect(playerClients()).toContain('ANDROID');
+  });
+
+  it('берёт порядок из env и чистит мусор', () => {
+    process.env.PLAYER_CLIENTS = ' tv , bogus , IOS , tv ';
+    expect(playerClients()).toEqual(['TV', 'IOS']);
   });
 });

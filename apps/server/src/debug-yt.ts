@@ -1,20 +1,80 @@
-import Innertube from 'youtubei.js';
+/**
+ * Пробник player-клиентов: показывает, какой клиент отдаёт ссылки с этого IP.
+ *
+ * Запуск в контейнере:
+ *   docker compose -f deploy/docker-compose.yml exec server \
+ *     node apps/server/dist/debug-yt.js dQw4w9WgXcQ
+ */
 
-async function main() {
-  const yt = await Innertube.create();
-  const info = await yt.getInfo('8tS8vw3TqzI');
-  const af = info.streaming_data?.adaptive_formats ?? [];
-  const f = af[0];
-  console.log('playability:', info.playability_status?.status, info.playability_status?.reason ?? '');
-  console.log('playerConfig present:', !!info.player_config, '| playableInEmbed:', info.playability_status?.embeddable);
-  console.log('--- url/cipher/signature_cipher values ---');
-  console.log('url:', JSON.stringify(f.url));
-  console.log('cipher:', f.cipher ? f.cipher.slice(0, 150) : JSON.stringify(f.cipher));
-  console.log('signature_cipher:', f.signature_cipher ? f.signature_cipher.slice(0, 150) : JSON.stringify(f.signature_cipher));
-  console.log('drm_families:', f.drm_families);
-  // где хранится ссылка? в raw data
-  const raw = f as unknown as { raw?: unknown };
-  console.log('own enumerable keys:', Object.keys(f));
+import Innertube from 'youtubei.js';
+import { KNOWN_PLAYER_CLIENTS, playerClients, resolveFormatUrls } from './yt.js';
+
+const videoId = process.argv[2] ?? 'dQw4w9WgXcQ';
+
+type CipherFormat = {
+  itag?: number;
+  url?: string;
+  signature_cipher?: string;
+  height?: number;
+  has_video?: boolean;
+  decipher?: (player?: unknown) => Promise<string>;
+};
+
+type DecipherPlayer = {
+  decipher: (
+    url?: string,
+    signatureCipher?: string,
+    cipher?: string,
+    cache?: Map<string, string>,
+  ) => Promise<string>;
+};
+
+async function probe(yt: Innertube, player: DecipherPlayer | undefined, client: string) {
+  const started = Date.now();
+  try {
+    const info = await yt.getBasicInfo(videoId, { client: client as never });
+    const streaming = (
+      info as unknown as {
+        streaming_data?: { adaptive_formats?: CipherFormat[]; formats?: CipherFormat[] };
+        playability_status?: { status?: string; reason?: string };
+      }
+    ).streaming_data;
+    const formats = [...(streaming?.adaptive_formats ?? []), ...(streaming?.formats ?? [])];
+    const deciphered = await resolveFormatUrls({ streaming_data: streaming }, player as never);
+    const withUrl = formats.filter((f) => !!f.url);
+    const video = withUrl.filter((f) => f.has_video !== false);
+    const best = video.reduce((max, f) => Math.max(max, f.height ?? 0), 0);
+    const status = (info as { playability_status?: { status?: string; reason?: string } })
+      .playability_status;
+
+    console.log(
+      `${client.padEnd(13)} ${(status?.status ?? '?').padEnd(18)} ` +
+        `ссылок: ${String(withUrl.length).padStart(2)}/${String(formats.length).padEnd(2)} ` +
+        `видео: ${String(video.length).padStart(2)} макс: ${String(best || '—').padStart(4)}p ` +
+        `расшифровано: ${String(deciphered).padStart(2)} ` +
+        `(${Date.now() - started}ms)${status?.reason ? ` — ${status.reason}` : ''}`,
+    );
+  } catch (err) {
+    console.log(`${client.padEnd(13)} ОШИБКА: ${err instanceof Error ? err.message : String(err)}`);
+  }
 }
 
-main().catch((e) => { console.error(e); process.exit(1); });
+async function main() {
+  console.log(`Видео: ${videoId}`);
+  console.log(`Клиенты по умолчанию: ${playerClients().join(', ')}`);
+  console.log('');
+
+  const yt = await Innertube.create({ retrieve_player: true });
+  const player = (yt.session as unknown as { player?: DecipherPlayer }).player;
+  if (!player) console.log('ВНИМАНИЕ: JS player не загрузился — расшифровка невозможна\n');
+
+  const clients = ['WEB', ...KNOWN_PLAYER_CLIENTS];
+  for (const client of clients) {
+    await probe(yt, player, client);
+  }
+}
+
+main().catch((err) => {
+  console.error(err);
+  process.exit(1);
+});
