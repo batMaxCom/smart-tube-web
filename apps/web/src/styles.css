@@ -1,0 +1,85 @@
+@import 'tailwindcss';
+
+:root {
+  color-scheme: dark;
+}
+
+html,
+body,
+#root {
+  height: 100%;
+}
+
+body {
+  margin: 0;
+  background: #0f0f0f;
+  color: #f1f1f1;
+  font-family:
+    'Segoe UI',
+    Roboto,
+    system-ui,
+    -apple-system,
+    sans-serif;
+  overflow-x: hidden;
+}
+
+/* Фокус-подсветка для TV-навигации */
+[data-focus] {
+  outline: none;
+  transition:
+    transform 0.12s ease,
+    box-shadow 0.12s ease,
+    border-color 0.12s ease;
+}
+
+[data-focus]:focus,
+[data-focus].focused {
+  outline: 3px solid rgba(255, 255, 255, 0.9);
+  outline-offset: 2px;
+  transform: scale(1.04);
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.6);
+}
+
+/* Скрытый скроллбар, но оставлена прокрутка (для ТВ стиль) */
+::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+::-webkit-scrollbar-thumb {
+  background: #3f3f3f;
+  border-radius: 5px;
+}
+
+/* Светлая тема (MVP): перекрашиваем базовые поверхности через стандартные клaccы */
+html.theme-light {
+  color-scheme: light;
+}
+html.theme-light body {
+  background: #f2f2f2;
+  color: #0f0f0f;
+}
+html.theme-light .bg-\[\#0f0f0f\] {
+  background-color: #ffffff;
+}
+html.theme-light .bg-\[\#181818\] {
+  background-color: #ffffff;
+}
+html.theme-light .bg-\[\#0f0f0f\]\/95 {
+  background-color: rgb(255 255 255 / 0.95);
+}
+html.theme-light .text-\[\#aaa\],
+html.theme-light .text-white\/70,
+html.theme-light .text-white\/50,
+html.theme-light .text-white\/40 {
+  color: #555;
+}
+html.theme-light .border-white\/10 {
+  border-color: rgb(0 0 0 / 0.1);
+}
+html.theme-light .bg-white\/10,
+html.theme-light .bg-white\/5 {
+  background-color: rgb(0 0 0 / 0.06);
+}
+html.theme-light img {
+  filter: none;
+}

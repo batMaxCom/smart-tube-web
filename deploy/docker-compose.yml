@@ -1,0 +1,29 @@
+services:
+  server:
+    build:
+      context: ..
+      dockerfile: deploy/Dockerfile.server
+    container_name: stfw-server
+    ports:
+      - '3090:3090'
+    environment:
+      PORT: '3090'
+      HOST: '0.0.0.0'
+      LOG_LEVEL: 'info'
+      # 1 — если браузер/ТВ не может тянуть googlevideo напрямую из-за CORS
+      PROXY_STREAMS: '0'
+      # Режим демо-контента: auto — по детекту (бот-гейт/недоступен → демо),
+      # 1 — всегда демо (стенд/демо-режим), 0 — всегда реальный поток (иначе 502)
+      DEMO_MODE: '${DEMO_MODE:-0}'
+    restart: unless-stopped
+
+  web:
+    build:
+      context: ..
+      dockerfile: deploy/Dockerfile.web
+    container_name: stfw-web
+    ports:
+      - '8085:80'
+    depends_on:
+      - server
+    restart: unless-stopped

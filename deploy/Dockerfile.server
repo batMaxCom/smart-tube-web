@@ -1,0 +1,24 @@
+# Syntax: deploy/Dockerfile.server
+# Бэкенд: Node + youtubei.js, отдаёт API и DASH.
+# Собирается из корня монорепо: docker build -t stfw-server -f deploy/Dockerfile.server .
+
+FROM node:20-alpine AS build
+WORKDIR /app
+COPY package.json package-lock.json ./
+COPY apps apps
+COPY packages packages
+RUN npm ci --workspaces --include-workspace-root --no-audit --no-fund \
+  && npm run build -w @stfw/shared \
+  && npm run build -w @stfw/server
+
+FROM node:20-alpine
+ENV NODE_ENV=production PORT=3090 HOST=0.0.0.0
+WORKDIR /app
+COPY --from=build /app/package.json ./
+COPY --from=build /app/node_modules ./node_modules
+COPY --from=build /app/packages/shared ./packages/shared
+COPY --from=build /app/apps/server/package.json ./apps/server/
+COPY --from=build /app/apps/server/dist ./apps/server/dist
+COPY --from=build /app/apps/server/assets ./apps/server/assets
+EXPOSE 3090
+CMD ["node", "apps/server/dist/index.js"]

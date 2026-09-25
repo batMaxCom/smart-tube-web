@@ -1,0 +1,33 @@
+<!doctype html>
+<html lang="ru">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="color-scheme" content="dark" />
+    <title>Нет сети — SmartTube WEB</title>
+    <style>
+      :root { color-scheme: dark; }
+      body { margin: 0; height: 100vh; display: grid; place-items: center; font-family: system-ui, sans-serif; background: #0f0f0f; color: #f1f1f1; }
+      .box { text-align: center; padding: 24px; }
+      .box h1 { font-size: 20px; margin: 12px 0 8px; }
+      .box p { color: #aaa; margin: 0 0 20px; }
+      button { background: #e62117; color: #fff; border: none; border-radius: 8px; padding: 12px 22px; font-size: 16px; cursor: pointer; }
+      .logo { width: 72px; height: 72px; border-radius: 16px; background: #e62117; display: grid; place-items: center; }
+      .logo:after { content: ""; width: 0; height: 0; border-left: 22px #fff solid; border-top: 14px transparent solid; border-bottom: 14px transparent solid; margin-left: 4px; }
+    </style>
+  </head>
+  <body>
+    <div class="box">
+      <div class="logo"></div>
+      <h1>Нет подключения к сети</h1>
+      <p>Сохранённый офлайн-экран. Приложение само восстановится, как только сеть появится.</p>
+      <button id="retry" data-testid="offline-retry">Повторить</button>
+    </div>
+    <script>
+      document.getElementById('retry').addEventListener('click', function () {
+        location.reload();
+      });
+      window.addEventListener('online', function () { location.reload(); });
+    </script>
+  </body>
+</html>

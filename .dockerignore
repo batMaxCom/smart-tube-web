@@ -1,0 +1,11 @@
+# Зависимости и сборочные артефакты не нужны в Docker build context
+.git
+.gitignore
+node_modules
+**/dist
+coverage
+playwright-report
+test-results
+*.log
+apps/*/node_modules
+/tmp
