@@ -201,6 +201,7 @@ export interface HealthResponse {
   youtubeReachable: boolean;
   /** Режим демо-контента: 'auto' — по детекту, 'on' — всегда демо, 'off' — никогда. */
   demoMode: DemoMode;
+  proxyStreams: boolean;
 }
 
 /* ================== аккаунт (Фаза 3) ================== */

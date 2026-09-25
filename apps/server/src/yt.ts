@@ -55,6 +55,7 @@ interface FeedLike {
 }
 
 const RETRIES = 2;
+const PLAYER_CLIENTS = ['ANDROID_VR', 'ANDROID'] as const;
 
 /** Сессии кэшируются по стране (gl), чтобы не плодить их на каждый запрос. */
 const sessions = new Map<string, Promise<Innertube | undefined>>();
@@ -209,19 +210,50 @@ export function extractPlayer(info: unknown): PlayerFormats {
   return { meta, formats };
 }
 
+function hasPlayableVideo(formats: VideoFormat[]): boolean {
+  return formats.some((f) => f.hasVideo && !f.isProtected && !!f.url);
+}
+
 export async function getPlayer(id: string): Promise<PlayerFormats> {
   const yt = await getInnertube();
   if (!yt) throw new Error('YouTube is not reachable');
 
   return withRetry(async () => {
-    const info = await yt.getInfo(id);
-    // Best-effort: пишем просмотр в историю аккаунта (не ждём ответа).
-    if (yt.session.logged_in) {
-      void (info as { addToWatchHistory?: () => Promise<unknown> }).addToWatchHistory?.().catch(() => {
-        /* история не критична */
-      });
+    let result: PlayerFormats | undefined;
+    let lastError: unknown;
+
+    try {
+      const info = await yt.getInfo(id);
+      if (yt.session.logged_in) {
+        void (info as { addToWatchHistory?: () => Promise<unknown> })
+          .addToWatchHistory?.()
+          .catch(() => undefined);
+      }
+      result = extractPlayer(info);
+      if (hasPlayableVideo(result.formats)) return result;
+    } catch (err) {
+      lastError = err;
+      console.warn('[yt] WEB player client failed:', err instanceof Error ? err.message : err);
     }
-    return extractPlayer(info);
+
+    for (const client of PLAYER_CLIENTS) {
+      try {
+        const info = await yt.getBasicInfo(id, { client });
+        result = extractPlayer(info);
+        if (hasPlayableVideo(result.formats)) return result;
+      } catch (err) {
+        lastError = err;
+        console.warn(
+          `[yt] ${client} player client failed:`,
+          err instanceof Error ? err.message : err,
+        );
+      }
+    }
+
+    if (result) return result;
+    throw lastError instanceof Error
+      ? lastError
+      : new Error('YouTube did not return player information');
   });
 }
 

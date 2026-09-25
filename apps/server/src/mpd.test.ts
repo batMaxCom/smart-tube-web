@@ -87,12 +87,15 @@ describe('toFormat', () => {
     expect(f.isProtected).toBe(true);
   });
 
-  it('prefixes url when baseUrlPrefix passed', () => {
-    const f = toFormat(
-      { itag: 137, mime_type: 'video/mp4', codecs: 'avc1.640028', url: 'https://r1.example/video' },
-      '/api/v1/stream?url=',
-    );
-    expect(f.url).toBe('/api/v1/stream?url=https%3A%2F%2Fr1.example%2Fvideo');
+  it('extracts codecs from MIME and normalizes mime type', () => {
+    const f = toFormat({
+      itag: 313,
+      mime_type: 'video/webm; codecs="vp09.00.50.08"',
+      url: 'https://r1.example/video',
+    });
+    expect(f.mimeType).toBe('video/webm');
+    expect(f.codecs).toBe('vp9');
+    expect(f.codecsString).toBe('vp09.00.50.08');
     expect(f.isProtected).toBe(false);
   });
 

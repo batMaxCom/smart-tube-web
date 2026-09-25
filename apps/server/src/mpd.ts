@@ -55,32 +55,34 @@ export function classifyAudioCodec(codecsString?: string): AudioCodec {
   return 'aac';
 }
 
+function codecFromMime(mime: string): string {
+  return mime.match(/\bcodecs\s*=\s*["']([^"']+)["']/i)?.[1] ?? '';
+}
+
 /** Конвертация youtube-потока в наш DTO (без сетевой зависимости). */
-export function toFormat(
-  f: {
-    itag?: number;
-    url?: string;
-    mime_type?: string;
-    codecs?: string;
-    bitrate?: number;
-    audio_bitrate?: number;
-    audio_sample_rate?: string | number;
-    audio_channels?: number;
-    fps?: number;
-    width?: number;
-    height?: number;
-    content_length?: number;
-    init_range?: { start?: number; end?: number };
-    index_range?: { start?: number; end?: number };
-    color_info?: { primaries?: string; transfer_characteristics?: string };
-    quality_label?: string;
-  },
-  baseUrlPrefix?: string,
-): VideoFormat {
+export function toFormat(f: {
+  itag?: number;
+  url?: string;
+  mime_type?: string;
+  codecs?: string;
+  bitrate?: number;
+  audio_bitrate?: number;
+  audio_sample_rate?: string | number;
+  audio_channels?: number;
+  fps?: number;
+  width?: number;
+  height?: number;
+  content_length?: number;
+  init_range?: { start?: number; end?: number };
+  index_range?: { start?: number; end?: number };
+  color_info?: { primaries?: string; transfer_characteristics?: string };
+  quality_label?: string;
+}): VideoFormat {
   const mime = f.mime_type ?? '';
+  const mimeType = mime.split(';', 1)[0]?.trim() || mime;
   const hasVideo = mime.startsWith('video/');
   const hasAudio = mime.startsWith('audio/');
-  const codecsString = f.codecs ?? '';
+  const codecsString = f.codecs || codecFromMime(mime);
   const colorInfo: ColorInfo | undefined = f.color_info
     ? {
         isHdr:
@@ -91,13 +93,12 @@ export function toFormat(
       }
     : undefined;
 
-  let rawUrl = f.url;
-  if (rawUrl && baseUrlPrefix) rawUrl = `${baseUrlPrefix}${encodeURIComponent(rawUrl)}`;
+  const rawUrl = f.url;
 
   return {
     itag: f.itag ?? 0,
     url: rawUrl,
-    mimeType: mime,
+    mimeType,
     codecs: hasVideo
       ? (classifyVideoCodec(codecsString) ?? 'vp9')
       : classifyAudioCodec(codecsString),
@@ -182,6 +183,7 @@ export function buildMpd(params: {
 
   if (video.length > 0) {
     videoRepresentations = video.length;
+    const videoMime = video[0]?.mimeType ?? 'video/mp4';
     const lines: string[] = [];
     for (const f of video) {
       totalBits += f.bitrate ?? 0;
@@ -204,7 +206,7 @@ export function buildMpd(params: {
     const maxW = Math.max(...video.map((f) => f.width ?? 0));
     const maxH = Math.max(...video.map((f) => f.height ?? 0));
     representations.push(
-      `<AdaptationSet mimeType="video/mp4" id="videoset" segmentAlignment="true" maxWidth="${maxW}" maxHeight="${maxH}">${lines.join('')}</AdaptationSet>`,
+      `<AdaptationSet mimeType="${XML.escape(videoMime)}" id="videoset" segmentAlignment="true" maxWidth="${maxW}" maxHeight="${maxH}">${lines.join('')}</AdaptationSet>`,
     );
   }
 
@@ -226,7 +228,7 @@ export function buildMpd(params: {
       `<BaseURL>${XML.escape(audio.url ?? '')}</BaseURL>` +
       `</Representation>`;
     representations.push(
-      `<AdaptationSet mimeType="audio/mp4" id="audioset" segmentAlignment="true" lang="und">${repl}</AdaptationSet>`,
+      `<AdaptationSet mimeType="${XML.escape(mime)}" id="audioset" segmentAlignment="true" lang="und">${repl}</AdaptationSet>`,
     );
   }
 

@@ -215,7 +215,7 @@ export const ShakaVideo = forwardRef<ShakaVideoHandle, Props>(function ShakaVide
   useEffect(() => {
     if (!sponsorSkip || !videoId) return;
     let cancelled = false;
-    fetch(`https://sponsor.ajay.app/api/skipSegments?videoID=${encodeURIComponent(videoId)}&categories=${SB_CATEGORIES.join(',')}`)
+    fetch(`/api/v1/sponsorblock?videoId=${encodeURIComponent(videoId)}&categories=${SB_CATEGORIES.join(',')}`)
       .then((r) => (r.ok ? r.json() : []))
       .then((list: { segment: [number, number]; category: string }[]) => {
         if (cancelled) return;

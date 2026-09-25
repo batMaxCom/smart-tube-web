@@ -1,4 +1,4 @@
-import Fastify, { type FastifyReply } from 'fastify';
+import Fastify, { type FastifyReply, type FastifyRequest } from 'fastify';
 import cors from '@fastify/cors';
 import fastifyStatic from '@fastify/static';
 import { fileURLToPath } from 'node:url';
@@ -57,6 +57,7 @@ import {
 } from './yt.js';
 import { PairingCenter, parseVideoId } from './pairing.js';
 import { decideDemo, resolveDemoMode } from './demo.js';
+import { localizeUrls, registerProxyUrl, resolveProxyToken, type ProxyKind } from './proxy.js';
 
 const pairingCenter = new PairingCenter();
 
@@ -69,7 +70,7 @@ const STARTED_AT = Date.now();
 const DEMO_MODE = resolveDemoMode(process.env.DEMO_MODE);
 
 /** Проксировать ли потоки через наш сервер (иначе браузер тянет googlevideo напрямую). */
-const PROXY_STREAMS = process.env.PROXY_STREAMS === '1';
+const PROXY_STREAMS = process.env.PROXY_STREAMS !== '0';
 
 const playerCache = new TtlCache<PlayerResponse>(10 * 60 * 1000);
 const homeCache = new TtlCache<BrowseResponse>(5 * 60 * 1000);
@@ -81,6 +82,10 @@ const commentsCache = new TtlCache<CommentsResponse>(10 * 60 * 1000);
 const relatedCache = new TtlCache<RelatedResponse>(10 * 60 * 1000);
 
 const app = Fastify({ logger: { level: process.env.LOG_LEVEL ?? 'info' } });
+
+app.addHook('preSerialization', async (_request, _reply, payload) => {
+  return PROXY_STREAMS ? localizeUrls(payload) : payload;
+});
 
 await app.register(cors, {
   origin: true, // любой источник: dev на :5173, prod nginx, сам ТВ между собой
@@ -128,6 +133,7 @@ app.get('/api/v1/health', async (req, reply): Promise<HealthResponse> => {
     uptime: Math.floor((Date.now() - STARTED_AT) / 1000),
     youtubeReachable: reachable,
     demoMode: DEMO_MODE,
+    proxyStreams: PROXY_STREAMS,
   });
 });
 
@@ -365,7 +371,7 @@ app.get<{ Querystring: { id?: string } }>('/api/v1/player', async (req, reply) =
 
 app.get<{
   Params: { id: string };
-  Querystring: { codec?: string; maxHeight?: string; proxy?: string; sel?: string };
+  Querystring: { codec?: string; maxHeight?: string; sel?: string };
 }>('/api/v1/manifest/:id.mpd', async (req, reply) => {
   const id = req.params.id;
   const cached = playerCache.get(id);
@@ -375,19 +381,23 @@ app.get<{
   const codec = (req.query.codec ?? 'vp9') as VideoCodec;
   if (!codecOptions.includes(codec)) return fail(reply, 400, 'Неизвестный кодек');
   const maxHeight = req.query.maxHeight ? Number(req.query.maxHeight) : undefined;
-  const useProxy = req.query.proxy ? req.query.proxy === '1' : PROXY_STREAMS;
+  const useProxy = PROXY_STREAMS;
 
   const video = cached.formats.filter((f) => f.hasVideo && !f.isProtected && f.url);
   const audio = cached.formats.filter((f) => f.hasAudio && !f.isProtected && f.url);
 
-  const prefix = useProxy ? `/api/v1/stream?url=` : undefined!;
-  const remap = (url?: string) => (url && prefix ? `${prefix}${encodeURIComponent(url)}` : url);
+  const remap = (url?: string) => (useProxy ? registerProxyUrl(url, 'media') : url);
+  const videoFormats = video.map((f) => ({ ...f, url: remap(f.url) })).filter((f) => f.url);
+  const audioFormats = audio.map((f) => ({ ...f, url: remap(f.url) })).filter((f) => f.url);
+  if (useProxy && videoFormats.length === 0) {
+    return fail(reply, 502, 'Не удалось создать локальные прокси для видеопотоков');
+  }
 
   const result: MpdBuildResult = buildMpd({
     videoId: id,
     durationSeconds: cached.durationSeconds,
-    videoFormats: video.map((f) => ({ ...f, url: remap(f.url) })),
-    audioFormats: audio.map((f) => ({ ...f, url: remap(f.url) })),
+    videoFormats,
+    audioFormats,
     selection: { codec, maxHeight, allowProgressive: true },
   });
 
@@ -397,52 +407,120 @@ app.get<{
   return reply.send(result.mpd);
 });
 
-/** Пассивный прокси потока googlevideo (fallback, если CORS не пускает браузер). */
-app.get<{ Querystring: { url?: string } }>('/api/v1/stream', async (req, reply) => {
-  const target = req.query.url ?? '';
-  if (!target.startsWith('https://')) return fail(reply, 400, 'Некорректный URL');
+const MAX_RANGE_BYTES = 32 * 1024 * 1024;
+
+function parseRange(value: string | undefined): string | null | undefined {
+  if (!value) return undefined;
+  const match = /^bytes=(\d*)-(\d*)$/.exec(value);
+  if (!match || (!match[1] && !match[2])) return null;
+  const start = match[1] ? Number(match[1]) : undefined;
+  const end = match[2] ? Number(match[2]) : undefined;
   if (
-    !/gotvgo?le?video/i.test(target) &&
-    !/googlevideo/i.test(target) &&
-    !/youtube\.com/i.test(target)
-  )
-    return fail(reply, 403, 'Только googlevideo');
+    (start !== undefined && !Number.isSafeInteger(start)) ||
+    (end !== undefined && !Number.isSafeInteger(end))
+  ) {
+    return null;
+  }
+  if (
+    start !== undefined &&
+    end !== undefined &&
+    (end < start || end - start + 1 > MAX_RANGE_BYTES)
+  ) {
+    return null;
+  }
+  if (start === undefined && end !== undefined && end + 1 > MAX_RANGE_BYTES) {
+    return null;
+  }
+  return value;
+}
+
+type ProxyRequest = FastifyRequest<{ Params: { token: string } }>;
+
+async function proxyRequest(kind: ProxyKind, req: ProxyRequest, reply: FastifyReply) {
+  const target = resolveProxyToken(req.params.token, kind);
+  if (!target) return fail(reply, 404, 'Медиатокен не найден или истёк');
+  const range = parseRange(req.headers.range);
+  if (range === null) return fail(reply, 416, 'Некорректный Range');
 
   try {
-    const range = req.headers.range;
     const upstream = await fetch(target, {
       headers: {
         ...(range ? { Range: range } : {}),
         'User-Agent': 'Mozilla/5.0 (SmartTubeWeb)',
       },
+      redirect: 'error',
       signal: AbortSignal.timeout(30_000),
     });
-    if (!upstream.ok && upstream.status !== 206)
-      return fail(reply, upstream.status, 'Upstream error');
-    const clen = upstream.headers.get('content-length');
-    const ctype = upstream.headers.get('content-type') ?? 'application/octet-stream';
-    const cntRange = upstream.headers.get('content-range');
-    reply.header('Content-Type', ctype);
-    if (clen) reply.header('Content-Length', clen);
-    if (cntRange) {
-      reply.header('Content-Range', cntRange);
-      reply.header('Accept-Ranges', 'bytes');
+    if (!upstream.ok) return fail(reply, upstream.status, 'Upstream error');
+    const contentType = upstream.headers.get('content-type') ?? 'application/octet-stream';
+    if (kind === 'asset' && !contentType.toLowerCase().startsWith('image/')) {
+      return fail(reply, 415, 'Upstream asset is not an image');
     }
+    const contentLength = upstream.headers.get('content-length');
+    const contentRange = upstream.headers.get('content-range');
+    reply.header('Content-Type', contentType);
+    reply.header('X-Content-Type-Options', 'nosniff');
+    reply.header(
+      'Cache-Control',
+      kind === 'media' ? 'private, max-age=60' : 'public, max-age=86400',
+    );
+    if (contentLength) reply.header('Content-Length', contentLength);
+    if (contentRange) reply.header('Content-Range', contentRange);
+    if (kind === 'media') reply.header('Accept-Ranges', 'bytes');
     reply.code(upstream.status);
-    if (upstream.body) {
-      const nodeStream = ReadableStreamToNode(upstream.body);
-      return reply.send(nodeStream);
-    }
-    return fail(reply, 502, 'Нет тела ответа');
+    if (!upstream.body) return fail(reply, 502, 'Нет тела ответа');
+    return reply.send(ReadableStreamToNode(upstream.body));
   } catch (err) {
     app.log.error(err);
     return fail(reply, 502, 'Proxy error');
   }
+}
+
+app.get<{ Params: { token: string } }>('/api/v1/stream/:token', async (req, reply) => {
+  return proxyRequest('media', req, reply);
+});
+
+app.get<{ Params: { token: string } }>('/api/v1/asset/:token', async (req, reply) => {
+  return proxyRequest('asset', req, reply);
+});
+
+app.get('/api/v1/stream', async (_req, reply) => {
+  return fail(reply, 410, 'Прямые URL потоков отключены');
 });
 
 function ReadableStreamToNode(web: ReadableStream<Uint8Array>): Readable {
   return Readable.from(web as unknown as AsyncIterable<Uint8Array>);
 }
+
+app.get<{ Querystring: { videoId?: string; categories?: string } }>(
+  '/api/v1/sponsorblock',
+  async (req, reply) => {
+    const videoId = (req.query.videoId ?? '').trim();
+    if (!/^[A-Za-z0-9_-]{6,}$/.test(videoId)) return reply.send([]);
+    const allowedCategories = new Set(['sponsor', 'intro', 'outro', 'selfpromo']);
+    const categories = (req.query.categories ?? '')
+      .split(',')
+      .map((item) => item.trim())
+      .filter((item) => allowedCategories.has(item));
+    if (categories.length === 0) return reply.send([]);
+
+    const target = new URL('https://sponsor.ajay.app/api/skipSegments');
+    target.searchParams.set('videoID', videoId);
+    target.searchParams.set('categories', categories.join(','));
+    try {
+      const upstream = await fetch(target, {
+        headers: { 'User-Agent': 'Mozilla/5.0 (SmartTubeWeb)' },
+        signal: AbortSignal.timeout(10_000),
+      });
+      if (!upstream.ok) return reply.send([]);
+      const data: unknown = await upstream.json();
+      return reply.send(Array.isArray(data) ? data : []);
+    } catch (err) {
+      app.log.warn(err);
+      return reply.send([]);
+    }
+  },
+);
 
 /* ---------- аккаунт (Фаза 3) ---------- */
 
