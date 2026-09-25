@@ -87,17 +87,12 @@ export const KNOWN_PLAYER_CLIENTS = [
 export type PlayerClient = (typeof KNOWN_PLAYER_CLIENTS)[number];
 
 /**
- * Порядок фолбэков по умолчанию. ANDROID_VR и TV отдают ссылки напрямую и не
- * требуют PO-токенов — с датацентрового IP именно они обычно не бот-гейтятся.
+ * Порядок фолбэков по умолчанию. Проверено с датацентрового IP: ANDROID_VR и IOS
+ * отдают готовые ссылки в полном качестве и не требуют PO-токенов. Остальные
+ * (WEB/MWEB/TV_SIMPLY) присылают только signatureCipher, который без JS-эвалюатора
+ * расшифровать нельзя — они в дефолт не входят, но остаются доступными через env.
  */
-const DEFAULT_PLAYER_CLIENTS: PlayerClient[] = [
-  'ANDROID_VR',
-  'TV',
-  'TV_SIMPLY',
-  'ANDROID',
-  'IOS',
-  'MWEB',
-];
+const DEFAULT_PLAYER_CLIENTS: PlayerClient[] = ['ANDROID_VR', 'IOS', 'ANDROID', 'TV'];
 
 /** Список фолбэк-клиентов из env PLAYER_CLIENTS (через запятую), иначе дефолтный. */
 export function playerClients(): PlayerClient[] {
@@ -271,14 +266,30 @@ function hasPlayableVideo(formats: VideoFormat[]): boolean {
  * играбелен, но требует расшифровки через JS player (n-трансформ) — без неё все
  * форматы выглядят «без url», и прокси считал это бот-гейтом. Расшифровываем на месте.
  *
- * @returns сколько форматов получили url
+ * @returns сколько форматов получили url; failed — сколько не удалось (нет JS-эвалюатора)
  */
 export async function resolveFormatUrls(info: unknown, player?: DecipherPlayer): Promise<number> {
-  if (!player) return 0;
+  const stats = await decipherFormatUrls(info, player);
+  if (stats.failed > 0) {
+    console.warn(
+      `[yt] не удалось расшифровать ${stats.failed} формат(ов) (signatureCipher без JS-эвалюатора); ` +
+        `эти клиенты не годятся — оставляем те, что отдали прямые ссылки`,
+    );
+  }
+  return stats.resolved;
+}
+
+/** Расшифровка с разбивкой по исходу: сколько получили url, сколько зафейлилось. */
+export async function decipherFormatUrls(
+  info: unknown,
+  player?: DecipherPlayer,
+): Promise<{ resolved: number; failed: number }> {
+  if (!player) return { resolved: 0, failed: 0 };
   const streaming = (info as { streaming_data?: Record<string, YtFormat[] | undefined> })?.streaming_data;
   const list = [...(streaming?.adaptive_formats ?? []), ...(streaming?.formats ?? [])];
 
   let resolved = 0;
+  let failed = 0;
   await Promise.all(list.map(async (f) => {
     if (f.url) return;
     if (!f.signature_cipher && !f.cipher) return;
@@ -291,12 +302,14 @@ export async function resolveFormatUrls(info: unknown, player?: DecipherPlayer):
       if (url) {
         f.url = url;
         resolved++;
+      } else {
+        failed++;
       }
-    } catch (err) {
-      console.warn(`[yt] не удалось расшифровать itag ${f.itag}:`, err instanceof Error ? err.message : err);
+    } catch {
+      failed++;
     }
   }));
-  return resolved;
+  return { resolved, failed };
 }
 
 export async function getPlayer(id: string): Promise<PlayerFormats> {

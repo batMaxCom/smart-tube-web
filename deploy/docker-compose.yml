@@ -16,7 +16,7 @@ services:
       # 1 — всегда демо (стенд/демо-режим), 0 — всегда реальный поток (иначе 502)
       DEMO_MODE: '${DEMO_MODE:-0}'
       # Порядок фолбэк player-клиентов InnerTube через запятую.
-      # Пусто — дефолт: ANDROID_VR,TV,TV_SIMPLY,ANDROID,IOS,MWEB
+      # Пусто — дефолт: ANDROID_VR,IOS,ANDROID,TV
       PLAYER_CLIENTS: '${PLAYER_CLIENTS:-}'
     restart: unless-stopped
 

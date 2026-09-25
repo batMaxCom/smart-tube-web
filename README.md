@@ -86,9 +86,9 @@ docker compose -f deploy/docker-compose.yml up --build
 YouTube режет два разных случая, и в логах они выглядят одинаково («форматы есть, ссылок нет»):
 
 1. **Ссылок нет вообще** — бот-гейт по IP/клиенту. Лечится сменой player-клиента InnerTube.
-2. **YouTube прислал `signatureCipher` вместо `url`** — поток играбелен, его надо расшифровать через JS player'а (n-трансформ). Backend это делает сам (`resolveFormatUrls` в `apps/server/src/yt.ts`).
+2. **YouTube прислал `signatureCipher` вместо `url`** — поток играбелен, но требует JS-интерпретатора для n-трансформа. В Node его нет, поэтому такие клиенты не играбельны (в логах: `To decipher URLs, you must provide your own JavaScript evaluator`).
 
-Порядок фолбэков: сначала WEB, затем клиенты из `PLAYER_CLIENTS`. По умолчанию `ANDROID_VR,TV,TV_SIMPLY,ANDROID,IOS,MWEB` — первые не требуют PO-токенов и обычно не бот-гейтятся с датацентра.
+Порядок фолбэков: сначала WEB, затем клиенты из `PLAYER_CLIENTS`. По умолчанию `ANDROID_VR,IOS,ANDROID,TV` — они отдают готовые ссылки в полном качестве и не требуют PO-токенов.
 
 Диагностика прямо на сервере (показывает, какой клиент реально отдаёт ссылки с этого IP):
 
@@ -97,16 +97,25 @@ docker compose -f deploy/docker-compose.yml exec server node apps/server/dist/de
 ```
 
 ```
-WEB            OK                 ссылок:  0/27  видео:  0  макс:    —p расшифровано:  0
-ANDROID_VR     OK                 ссылок: 25/25  видео: 20  макс: 2160p расшифровано:  0
+WEB            OK                 ссылок:  0/27 видео:  0  макс:    —p  ← только signatureCipher
+ANDROID_VR     OK                 ссылок: 27/27 видео: 23  макс: 2160p  ← играбельно
+IOS            OK                 ссылок: 24/24 видео: 22  макс: 2160p  ← играбельно
+ANDROID        OK                 ссылок:  1/30 видео:  1  макс:  360p  ← без PO-токена
+TV             UNPLAYABLE         ссылок:  0/0
 ```
 
-Если в колонке «ссылок» ноль у всех клиентов — нужен residential-прокси для исходящих запросов (настраивается на уровне Docker/VPN, env у backend'а для этого нет). Если ссылки есть, но пустые — проблема в расшифровке, смотрите логи `docker compose -f deploy/docker-compose.yml logs -f server`.
+Если в колонке «ссылок» ноль у всех клиентов — нужен residential-прокси для исходящих запросов (настраивается на уровне Docker/VPN, env у backend'а для этого нет).
 
 Свой порядок клиентов без пересборки:
 
 ```bash
-PLAYER_CLIENTS=ANDROID_VR,ANDROID,TV_SIMPLY docker compose -f deploy/docker-compose.yml up -d
+PLAYER_CLIENTS=ANDROID_VR,IOS,ANDROID docker compose -f deploy/docker-compose.yml up -d
+```
+
+Проверка после деплоя (в ответе должен быть `false`, а `manifestPath` — не `/api/v1/demo/media.mpd`):
+
+```bash
+curl -s 'http://localhost:8085/api/v1/player?id=dQw4w9WgXcQ' | grep -o '"demo":[a-z]*'
 ```
 
 Запуск в Docker:

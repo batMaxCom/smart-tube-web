@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it } from 'vitest';
-import { playabilityOf, playerClients, resolveFormatUrls, toVideo, extractPlayer } from './yt.js';
+import { playabilityOf, decipherFormatUrls, playerClients, resolveFormatUrls, toVideo, extractPlayer } from './yt.js';
 
 describe('playabilityOf', () => {
   it('maps statuses to our playability', () => {
@@ -150,6 +150,25 @@ describe('resolveFormatUrls', () => {
       streaming_data: { adaptive_formats: [{ itag: 137, signature_cipher: 's=a' }] },
     };
     expect(await resolveFormatUrls(info, boom)).toBe(0);
+  });
+
+  it('decipherFormatUrls разделяет успех и провал', async () => {
+    const mixed = {
+      decipher: async (url?: string, signatureCipher?: string) => {
+        if (signatureCipher === 's=bad') throw new Error('no evaluator');
+        return `${signatureCipher ?? url}#ok`;
+      },
+    };
+    const info = {
+      streaming_data: {
+        adaptive_formats: [
+          { itag: 137, signature_cipher: 's=bad' },
+          { itag: 248, signature_cipher: 's=good' },
+        ],
+      },
+    };
+    expect(await decipherFormatUrls(info, mixed)).toEqual({ resolved: 1, failed: 1 });
+    expect(await decipherFormatUrls(info, undefined)).toEqual({ resolved: 0, failed: 0 });
   });
 });
 
