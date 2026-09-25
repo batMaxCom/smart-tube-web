@@ -69,7 +69,11 @@ export function PlayerControls({
         data-focus
         data-testid="btn-play"
         aria-label={state.playing ? 'Пауза' : 'Смотреть'}
-        className="absolute left-1/2 top-1/2 flex h-16 w-16 -translate-x-1/2 -translate-y-1/2 items-center justify-center rounded-full bg-black/50 text-3xl text-white backdrop-blur-sm transition hover:bg-black/70"
+        className={`absolute left-1/2 top-1/2 flex h-16 w-16 -translate-x-1/2 -translate-y-1/2 items-center justify-center rounded-full bg-black/50 text-3xl text-white backdrop-blur-sm transition hover:bg-black/70 ${
+          state.playing
+            ? 'opacity-0 group-hover:opacity-100 group-focus-within:opacity-100'
+            : 'opacity-100'
+        }`}
         onClick={onTogglePlay}
       >
         {state.playing ? '❚❚' : '▶'}
