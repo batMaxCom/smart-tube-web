@@ -57,6 +57,7 @@ import {
 } from './yt.js';
 import { PairingCenter, parseVideoId } from './pairing.js';
 import { decideDemo, resolveDemoMode } from './demo.js';
+import { registerMsxRoutes } from './msx.js';
 import { localizeUrls, registerProxyUrl, resolveProxyToken, type ProxyKind } from './proxy.js';
 
 const pairingCenter = new PairingCenter();
@@ -106,6 +107,17 @@ await app.register(fastifyStatic, {
     res.setHeader('Access-Control-Allow-Origin', '*');
     res.setHeader('Accept-Ranges', 'bytes');
   },
+});
+
+/* ---------- Media Station X ---------- */
+
+// Объекты MSX отдаём с бэкенда, а nginx проксирует /msx/ на тот же порт, что и веб.
+// Если внешний адрес известен заранее (частая ситуация в локальной сети), задайте
+// MSX_PUBLIC_URL=http://<ip>:<порт-веба> — тогда он не зависит от заголовка Host.
+registerMsxRoutes(app, {
+  publicUrl: process.env.MSX_PUBLIC_URL,
+  serverIp: process.env.MSX_HOST ?? 'localhost',
+  port: Number(process.env.MSX_PORT ?? PORT),
 });
 
 async function tryReachability(): Promise<boolean> {

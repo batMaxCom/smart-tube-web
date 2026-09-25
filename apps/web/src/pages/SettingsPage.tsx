@@ -1,4 +1,4 @@
-import { useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { backupGet, backupSave } from '../api';
 import { COUNTRIES, useApp, type Country, type Lang, type Theme } from '../store';
 import { useInitialFocus, useTvNavigation } from '../tvnav';
@@ -70,10 +70,51 @@ export function SettingsPage() {
   const [backupMsg, setBackupMsg] = useState<string | null>(null);
   const [restoreCode, setRestoreCode] = useState('');
   const [createdCode, setCreatedCode] = useState<string | null>(null);
+  const [msxCopied, setMsxCopied] = useState(false);
+
+  const msxUrl =
+    typeof window === 'undefined' ? '/msx/start.json' : `${window.location.origin}/msx/start.json`;
+
+  const copyMsxUrl = () => {
+    // Clipboard API доступен только в защищённом контексте (https/localhost) —
+    // для http://192.168.x.x откатываемся на execCommand.
+    const fallback = () => {
+      const ta = document.createElement('textarea');
+      ta.value = msxUrl;
+      ta.setAttribute('readonly', '');
+      ta.className = 'fixed -left-[9999px] top-0';
+      document.body.appendChild(ta);
+      ta.select();
+      let ok = false;
+      try {
+        ok = document.execCommand('copy');
+      } catch {
+        ok = false;
+      }
+      ta.remove();
+      setMsxCopied(ok);
+    };
+
+    if (!navigator.clipboard?.writeText) {
+      fallback();
+      return;
+    }
+    void navigator.clipboard.writeText(msxUrl).then(
+      () => setMsxCopied(true),
+      () => fallback(),
+    );
+  };
 
   const containerRef = useRef<HTMLDivElement>(null);
   useTvNavigation(containerRef);
   useInitialFocus(containerRef);
+
+  // подпись «Скопировано» возвращается к «Копировать»
+  useEffect(() => {
+    if (!msxCopied) return;
+    const id = window.setTimeout(() => setMsxCopied(false), 2000);
+    return () => window.clearTimeout(id);
+  }, [msxCopied]);
 
   const doCreate = async () => {
     setBackupMsg(null);
@@ -104,7 +145,7 @@ export function SettingsPage() {
   };
 
   return (
-    <div ref={containerRef} className="mx-auto flex max-w-2xl flex-col gap-3 px-4 py-4">
+    <div ref={containerRef} className="mx-auto flex max-w-2xl flex-col gap-3 px-3 py-4 sm:px-4">
       <h1 className="px-1 text-2xl font-semibold">{t('settings.title')}</h1>
 
       <Row label={t('settings.theme')}>
@@ -194,6 +235,28 @@ export function SettingsPage() {
             {backupMsg}
           </div>
         ) : null}
+      </div>
+
+      <div className="rounded-xl bg-[#181818] p-4">
+        <div className="mb-3 text-sm">{t('msx.title')}</div>
+        <div className="flex flex-wrap items-center gap-2">
+          <code
+            className="min-w-0 flex-1 overflow-x-auto whitespace-nowrap rounded bg-black/40 px-3 py-2 text-xs text-sky-300"
+            data-testid="msx-start-url"
+          >
+            {msxUrl}
+          </code>
+          <button
+            type="button"
+            data-focus
+            data-testid="msx-copy"
+            className="shrink-0 rounded-full bg-white/10 px-4 py-2 text-sm hover:bg-white/20"
+            onClick={copyMsxUrl}
+          >
+            {msxCopied ? t('msx.copied') : t('msx.copy')}
+          </button>
+        </div>
+        <div className="mt-2 text-xs text-white/50">{t('msx.hint')}</div>
       </div>
 
       <div className="rounded-xl bg-white/5 p-4 text-xs leading-relaxed text-white/50">

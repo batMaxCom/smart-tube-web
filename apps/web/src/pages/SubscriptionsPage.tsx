@@ -18,7 +18,7 @@ export function SubscriptionsPage() {
   const sentinel = useInfiniteScroll(feed.loadMore, feed.hasMore);
 
   return (
-    <div ref={containerRef} className="mx-auto max-w-[1600px] px-4 py-4">
+    <div ref={containerRef} className="mx-auto max-w-[1600px] px-3 py-4 sm:px-4">
       <h1 className="mb-4 px-1 text-2xl font-semibold">Подписки</h1>
       {!feed.loading && feed.items.length === 0 && !feed.error ? (
         <div className="mb-4 rounded-lg border border-sky-500/40 bg-sky-500/10 p-3 text-sm">

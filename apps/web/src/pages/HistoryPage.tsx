@@ -16,7 +16,7 @@ export function HistoryPage() {
   useInitialFocus(containerRef, [history]);
 
   return (
-    <div ref={containerRef} className="mx-auto max-w-[1200px] px-4 py-4">
+    <div ref={containerRef} className="mx-auto max-w-[1200px] px-3 py-4 sm:px-4">
       <div className="mb-4 flex items-center justify-between px-1">
         <h1 className="text-2xl font-semibold">История (на этом устройстве)</h1>
         {history.length > 0 ? (

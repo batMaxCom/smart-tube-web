@@ -1,5 +1,8 @@
-import { useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { formatDuration } from '../api';
+
+/** Через сколько панель прячется после последнего действия, если видео играет. */
+const AUTO_HIDE_MS = 3500;
 
 export interface PlayerUiState {
   playing: boolean;
@@ -42,7 +45,68 @@ export function PlayerControls({
   onTogglePip,
 }: Props) {
   const [hoverPos, setHoverPos] = useState<number | null>(null);
+  const [visible, setVisible] = useState(true);
   const seekRef = useRef<HTMLInputElement>(null);
+  const overlayRef = useRef<HTMLDivElement>(null);
+  const hideTimer = useRef<number | null>(null);
+
+  const clearHide = useCallback(() => {
+    if (hideTimer.current !== null) {
+      window.clearTimeout(hideTimer.current);
+      hideTimer.current = null;
+    }
+  }, []);
+
+  /**
+   * Показать панель. scheduleHide=true — перенести автоскрытие на 3.5 секунды вперёд.
+   * scheduleHide=false — только показать, уже запланированное автоскрытие не отменяем
+   * (иначе служебные pointer-события после касания гасили бы таймер).
+   */
+  const show = useCallback(
+    (scheduleHide: boolean) => {
+      if (scheduleHide) clearHide();
+      setVisible(true);
+      if (scheduleHide && state.playing) {
+        hideTimer.current = window.setTimeout(() => {
+          // фокус внутри панели (пульт/клавиатура) отменяет скрытие
+          const active = document.activeElement as HTMLElement | null;
+          if (active && overlayRef.current?.contains(active)) return;
+          setVisible(false);
+        }, AUTO_HIDE_MS);
+      }
+    },
+    [clearHide, state.playing],
+  );
+
+  // Пауза — панель всегда на месте; старт воспроизведения — показываем и гасим по таймеру.
+  useEffect(() => {
+    if (!state.playing) {
+      clearHide();
+      setVisible(true);
+      return;
+    }
+    show(true);
+    return clearHide;
+  }, [state.playing, show, clearHide]);
+
+  useEffect(() => clearHide, [clearHide]);
+
+  // На ТВ и телефонах нет hover: любая клавиша пульта или касание возвращают панель.
+  useEffect(() => {
+    const onKey = () => show(true);
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [show]);
+
+  // Мышь: панель остаётся, пока курсор над видео. Тач/пульт: показ по касанию с автоскрытием.
+  const onPointerEnter = (e: React.PointerEvent<HTMLDivElement>) => {
+    if (e.pointerType === 'mouse') show(false);
+  };
+  const onPointerMove = (e: React.PointerEvent<HTMLDivElement>) => {
+    if (e.pointerType === 'mouse') show(false);
+  };
+  const onPointerDown = () => show(true);
+  const onFocusCapture = () => show(false);
 
   const duration = state.duration || 0;
   const pct = duration ? (state.currentTime / duration) * 100 : 0;
@@ -59,9 +123,21 @@ export function PlayerControls({
   const fmt = (t: number) => formatDuration(Math.max(0, Math.floor(t)));
 
   return (
-    <div className="group absolute inset-0 flex flex-col justify-end" data-testid="player-overlay">
+    <div
+      ref={overlayRef}
+      className="player-controls group absolute inset-0 flex flex-col justify-end"
+      data-testid="player-overlay"
+      onPointerEnter={onPointerEnter}
+      onPointerMove={onPointerMove}
+      onPointerDown={onPointerDown}
+      onFocusCapture={onFocusCapture}
+    >
       {/* затемнение при активности */}
-      <div className="pointer-events-none absolute inset-0 bg-gradient-to-t from-black/70 via-black/10 to-black/20 opacity-0 transition group-hover:opacity-100 group-focus-within:opacity-100" />
+      <div
+        className={`pointer-events-none absolute inset-0 bg-gradient-to-t from-black/70 via-black/10 to-black/20 transition ${
+          visible ? 'opacity-100' : 'opacity-0'
+        }`}
+      />
 
       {/* большой центр: play/pause */}
       <button
@@ -70,9 +146,7 @@ export function PlayerControls({
         data-testid="btn-play"
         aria-label={state.playing ? 'Пауза' : 'Смотреть'}
         className={`absolute left-1/2 top-1/2 flex h-16 w-16 -translate-x-1/2 -translate-y-1/2 items-center justify-center rounded-full bg-black/50 text-3xl text-white backdrop-blur-sm transition hover:bg-black/70 ${
-          state.playing
-            ? 'opacity-0 group-hover:opacity-100 group-focus-within:opacity-100'
-            : 'opacity-100'
+          state.playing && !visible ? 'opacity-0' : 'opacity-100'
         }`}
         onClick={onTogglePlay}
       >
@@ -81,7 +155,9 @@ export function PlayerControls({
 
       {/* нижняя панель */}
       <div
-        className="pointer-events-none relative z-10 px-4 pb-3 opacity-0 transition group-hover:pointer-events-auto group-hover:opacity-100 group-focus-within:pointer-events-auto group-focus-within:opacity-100"
+        className={`safe-bottom relative z-10 px-4 pb-3 transition ${
+          visible ? 'opacity-100' : 'pointer-events-none opacity-0'
+        }`}
         data-testid="player-bottom"
       >
         {/* preview-таймлайн: показываем время в точке курсора */}
@@ -115,7 +191,7 @@ export function PlayerControls({
           />
         </div>
 
-        <div className="flex items-center gap-2 text-white select-none">
+        <div className="flex flex-wrap items-center gap-x-2 gap-y-2 text-white select-none">
           <button
             type="button"
             data-focus
@@ -138,7 +214,7 @@ export function PlayerControls({
             {fmt(state.currentTime)} / {fmt(duration)}
           </span>
 
-          <div className="ml-auto flex items-center gap-2">
+          <div className="ml-auto flex flex-wrap items-center justify-end gap-2">
             <button
               type="button"
               data-focus
@@ -169,7 +245,7 @@ export function PlayerControls({
                 value={state.muted ? 0 : state.volume}
                 onChange={(e) => onVolume(Number(e.target.value))}
                 aria-label="Громкость"
-                className="h-1 w-16 cursor-pointer appearance-none rounded-full bg-white/30"
+                className="hidden h-1 w-16 cursor-pointer appearance-none rounded-full bg-white/30 sm:block"
               />
             </div>
 

@@ -40,6 +40,42 @@ body {
   box-shadow: 0 10px 30px rgba(0, 0, 0, 0.6);
 }
 
+/* Отступ под вырез/статус-бар на телефонах (viewport-fit=cover) */
+.safe-top {
+  padding-top: calc(0.5rem + env(safe-area-inset-top, 0px));
+}
+.safe-bottom {
+  padding-bottom: calc(0.5rem + env(safe-area-inset-bottom, 0px));
+}
+
+/* Горизонтальная прокрутка навигации без полосы */
+.no-scrollbar {
+  scrollbar-width: none;
+}
+.no-scrollbar::-webkit-scrollbar {
+  display: none;
+}
+
+/* Ползунки: у input[type=range] с appearance:none нет своей картинки — рисуем её */
+input[type='range']::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 14px;
+  height: 14px;
+  border: none;
+  border-radius: 9999px;
+  background: #fff;
+  cursor: pointer;
+}
+input[type='range']::-moz-range-thumb {
+  width: 14px;
+  height: 14px;
+  border: none;
+  border-radius: 9999px;
+  background: #fff;
+  cursor: pointer;
+}
+
 /* Скрытый скроллбар, но оставлена прокрутка (для ТВ стиль) */
 ::-webkit-scrollbar {
   width: 10px;
@@ -48,6 +84,46 @@ body {
 ::-webkit-scrollbar-thumb {
   background: #3f3f3f;
   border-radius: 5px;
+}
+
+/* Мобильные устройства: нет hover, зато есть тапы */
+button,
+a,
+input,
+select,
+textarea,
+label {
+  touch-action: manipulation;
+  -webkit-tap-highlight-color: transparent;
+}
+
+@media (hover: none) and (pointer: coarse) {
+  /* Рамка фокуса нужна только для пульта и клавиатуры, при тапе она мешает */
+  [data-focus]:focus,
+  [data-focus].focused {
+    outline: none;
+    transform: none;
+    box-shadow: none;
+  }
+
+  /* Кнопки шапки и панели плеера — под палец, а не под курсор */
+  header button,
+  .player-controls button {
+    min-height: 40px;
+  }
+
+  /* Ползунки: увеличиваем зону захвата (фон не трогаем — он задаётся классом/инлайном) */
+  input[type='range'] {
+    height: 28px;
+  }
+  input[type='range']::-webkit-slider-thumb {
+    width: 22px;
+    height: 22px;
+  }
+  input[type='range']::-moz-range-thumb {
+    width: 22px;
+    height: 22px;
+  }
 }
 
 /* Светлая тема (MVP): перекрашиваем базовые поверхности через стандартные клaccы */

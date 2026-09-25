@@ -106,7 +106,7 @@ export function PairingPage({ target }: { target?: string }) {
   const verifyUrl = tv.verificationUrl;
 
   return (
-    <div ref={containerRef} className="mx-auto flex max-w-2xl flex-col gap-4 px-4 py-6">
+    <div ref={containerRef} className="mx-auto flex max-w-2xl flex-col gap-4 px-3 py-6 sm:px-4">
       <div className="flex items-center justify-between">
         <h1 className="text-2xl font-semibold" data-testid="pairing-page">{t('pairing.title')}</h1>
         <button

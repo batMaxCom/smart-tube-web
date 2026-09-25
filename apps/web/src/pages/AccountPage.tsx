@@ -122,7 +122,7 @@ export function AccountPage() {
   const pending = account.flowPending;
 
   return (
-    <div ref={containerRef} className="mx-auto flex max-w-2xl flex-col gap-3 px-4 py-4">
+    <div ref={containerRef} className="mx-auto flex max-w-2xl flex-col gap-3 px-3 py-4 sm:px-4">
       <h1 className="px-1 text-2xl font-semibold">Аккаунт</h1>
 
       {error ? (

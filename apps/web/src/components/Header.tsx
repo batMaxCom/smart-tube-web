@@ -1,5 +1,7 @@
+import { useState } from 'react';
 import { useApp } from '../store';
 import { useT } from '../i18n/useT';
+import { exitToMsx, isMsxMode } from '../msx';
 
 const NAV = [
   { route: { name: 'live' }, labelKey: 'nav.live', testid: 'nav-live' },
@@ -16,17 +18,18 @@ export function Header() {
   const goBack = useApp((s) => s.goBack);
   const signedIn = useApp((s) => s.account.signedIn);
   const channel = useApp((s) => s.account.channel);
+  const [msx] = useState(isMsxMode);
 
   const accountLabel = signedIn
     ? (channel?.name ?? t('nav.account')).trim().charAt(0).toUpperCase()
     : t('nav.signin');
 
   return (
-    <header className="sticky top-0 z-20 flex items-center gap-3 border-b border-white/10 bg-[#0f0f0f]/95 px-4 py-3 backdrop-blur">
+    <header className="safe-top sticky top-0 z-20 flex items-center gap-2 border-b border-white/10 bg-[#0f0f0f]/95 px-3 pb-2 backdrop-blur sm:gap-3 sm:px-4 sm:pb-3">
       <button
         type="button"
         aria-label={t('common.back')}
-        className="rounded-full border border-transparent px-3 py-1 text-lg text-white/80 hover:text-white"
+        className="shrink-0 rounded-full border border-transparent px-3 py-1 text-lg text-white/80 hover:text-white"
         onClick={() => (route.name === 'home' ? null : goBack())}
       >
         ←
@@ -34,21 +37,22 @@ export function Header() {
       <button
         type="button"
         data-focus
-        className="font-bold tracking-tight"
+        className="shrink-0 font-bold tracking-tight"
         data-testid="logo"
         onClick={() => navigate({ name: 'home' })}
       >
         SmartTube <span className="font-normal text-white/40">WEB</span>
       </button>
-      <nav className="ml-auto flex items-center gap-1.5 sm:gap-2">
-        <span className="hidden text-xs text-white/40 lg:block">TV-first</span>
+      {/* На узких экранах навигация прокручивается вбок, чтобы не выдавливать логотип */}
+      <nav className="no-scrollbar ml-auto flex min-w-0 items-center gap-1.5 overflow-x-auto sm:gap-2">
+        <span className="hidden shrink-0 text-xs text-white/40 lg:block">TV-first</span>
         {NAV.map((n) => (
           <button
             key={n.testid}
             type="button"
             data-focus
             data-testid={n.testid}
-            className={`rounded-full px-3 py-1.5 text-sm hover:bg-white/15 ${
+            className={`shrink-0 whitespace-nowrap rounded-full px-3 py-1.5 text-sm hover:bg-white/15 ${
               route.name === n.route.name ? 'bg-white/15' : ''
             }`}
             onClick={() => navigate({ ...(n.route as { name: 'live' | 'subscriptions' | 'history' | 'pairing' | 'settings' }) })}
@@ -56,19 +60,30 @@ export function Header() {
             {t(n.labelKey)}
           </button>
         ))}
+        {msx ? (
+          <button
+            type="button"
+            data-focus
+            data-testid="btn-exit-msx"
+            className="shrink-0 whitespace-nowrap rounded-full bg-white/10 px-3 py-1.5 text-sm hover:bg-white/20"
+            onClick={exitToMsx}
+          >
+            {t('msx.exit')}
+          </button>
+        ) : null}
         <button
           type="button"
           data-focus
-          className="rounded-full bg-white/10 px-4 py-1.5 text-sm hover:bg-white/20"
+          className="shrink-0 whitespace-nowrap rounded-full bg-white/10 px-4 py-1.5 text-sm hover:bg-white/20"
           data-testid="search-btn"
           onClick={() => navigate({ name: 'search', query: '' })}
         >
-          Поиск
+          {t('nav.search')}
         </button>
         <button
           type="button"
           data-focus
-          className={`rounded-full px-3 py-1.5 text-sm hover:bg-white/15 ${
+          className={`shrink-0 whitespace-nowrap rounded-full px-3 py-1.5 text-sm hover:bg-white/15 ${
             route.name === 'account' ? 'bg-white/15' : 'bg-white/10'
           }`}
           data-testid="nav-account"

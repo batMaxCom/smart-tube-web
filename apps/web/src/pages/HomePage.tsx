@@ -63,7 +63,7 @@ export function HomePage() {
   const sentinel = useInfiniteScroll(onNeeded, !!contRef.current && rows.length > 0);
 
   return (
-    <div ref={containerRef} className="mx-auto max-w-[1600px] px-4 py-4">
+    <div ref={containerRef} className="mx-auto max-w-[1600px] px-3 py-4 sm:px-4">
       <ErrorBanner message={error} />
       {rows.map((row, i) => (
         <FeedGrid key={`${row.title ?? 'row'}-${i}`} title={row.title} items={row.items} />

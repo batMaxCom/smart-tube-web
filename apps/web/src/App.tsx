@@ -119,7 +119,7 @@ export function App() {
   }, [route]);
 
   return (
-    <div ref={rootRef} className="min-h-screen">
+    <div ref={rootRef} className="safe-bottom min-h-screen">
       <Header />
       {route.name === 'home' && <HomePage />}
       {route.name === 'search' && <SearchPage key={`search-${route.query}`} initialQuery={route.query ?? ''} />}

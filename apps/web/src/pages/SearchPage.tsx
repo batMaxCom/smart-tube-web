@@ -145,7 +145,7 @@ export function SearchPage({ initialQuery }: { initialQuery: string }) {
   };
 
   return (
-    <div ref={containerRef} className="mx-auto max-w-[1600px] px-4 py-4">
+    <div ref={containerRef} className="mx-auto max-w-[1600px] px-3 py-4 sm:px-4">
       <form
         className="mb-2 flex max-w-xl items-center gap-2"
         onSubmit={(e) => {

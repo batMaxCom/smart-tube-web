@@ -31,14 +31,14 @@ export function Osk({ onKey, onBackspace, onClear, onSubmit, onClose }: Props) {
       </div>
       <div className="flex flex-col items-center gap-1.5">
         {ROWS.map((row, r) => (
-          <div key={r} className="flex gap-1.5">
+          <div key={r} className="flex flex-wrap justify-center gap-1.5">
             {row.map((ch) => (
               <button
                 key={ch}
                 type="button"
                 data-focus
                 data-testid={`osk-key-${ch}`}
-                className="h-11 w-9 rounded-md bg-white/10 text-base uppercase hover:bg-white/20"
+                className="h-11 w-8 rounded-md bg-white/10 text-sm uppercase hover:bg-white/20 sm:w-9 sm:text-base"
                 onClick={() => onKey(ch)}
               >
                 {ch}
@@ -46,7 +46,7 @@ export function Osk({ onKey, onBackspace, onClear, onSubmit, onClose }: Props) {
             ))}
           </div>
         ))}
-        <div className="flex gap-1.5">
+        <div className="flex flex-wrap justify-center gap-1.5">
           <button
             type="button"
             data-focus

@@ -45,5 +45,11 @@
   "pairing.hint": "How it works: TV shows a code. On your phone open …/#/pairing/CODE — paste a YouTube link or videoId and the video will start playing on TV.",
   "player.audioMode.cover": "Background audio mode — sound playing, screen can be turned off",
   "account.title": "Account",
-  "nav.signin": "Sign in"
+  "nav.signin": "Sign in",
+  "msx.exit": "Exit to MSX",
+  "msx.title": "Launch from Media Station X",
+  "msx.startUrl": "MSX start parameter",
+  "msx.copy": "Copy",
+  "msx.copied": "Copied ✓",
+  "msx.hint": "In MSX: Settings → Start Parameters → paste the link. If the launch is blocked, turn off Settings → Validate Links. The app will show an “Exit to MSX” button."
 }

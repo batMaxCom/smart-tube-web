@@ -18,7 +18,7 @@ export function LivePage() {
   const sentinel = useInfiniteScroll(feed.loadMore, feed.hasMore);
 
   return (
-    <div ref={containerRef} className="mx-auto max-w-[1600px] px-4 py-4">
+    <div ref={containerRef} className="mx-auto max-w-[1600px] px-3 py-4 sm:px-4">
       <h1 className="mb-4 flex items-center gap-2 px-1 text-2xl font-semibold">
         Live
         <span className="rounded bg-[#ff0033] px-1.5 py-0.5 text-xs font-semibold uppercase">Live</span>

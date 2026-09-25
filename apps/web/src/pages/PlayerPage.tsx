@@ -338,7 +338,7 @@ export function PlayerPage({ id }: { id: string }) {
   };
 
   return (
-    <div ref={containerRef} className="mx-auto max-w-[1400px] px-4 py-4">
+    <div ref={containerRef} className="mx-auto max-w-[1400px] px-3 py-4 sm:px-4">
       {error ? (
         <div className="mb-4 rounded-lg border border-red-500/40 bg-red-500/10 p-3 text-sm">{error}</div>
       ) : null}
@@ -468,7 +468,7 @@ export function PlayerPage({ id }: { id: string }) {
 
           <div className="mt-4 flex flex-wrap items-start justify-between gap-4">
             <div className="min-w-0 flex-1">
-              <h1 className="text-xl font-semibold" data-testid="player-title">
+              <h1 className="text-lg font-semibold sm:text-xl" data-testid="player-title">
                 {data.title}
               </h1>
               <div className="mt-1 text-sm text-[#aaa]">

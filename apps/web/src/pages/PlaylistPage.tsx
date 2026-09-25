@@ -31,7 +31,7 @@ export function PlaylistPage({ id }: { id: string }) {
   const pthumb = bestThumb({ thumbnails: playlist?.thumbnails });
 
   return (
-    <div ref={containerRef} className="mx-auto max-w-[1600px] px-4 py-4">
+    <div ref={containerRef} className="mx-auto max-w-[1600px] px-3 py-4 sm:px-4">
       <ErrorBanner message={feed.error} />
 
       {playlist ? (

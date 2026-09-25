@@ -62,7 +62,7 @@ export function ChannelPage({ id, tab }: { id: string; tab: ChannelTab }) {
   };
 
   return (
-    <div ref={containerRef} className="mx-auto max-w-[1600px] px-4 py-4">
+    <div ref={containerRef} className="mx-auto max-w-[1600px] px-3 py-4 sm:px-4">
       <ErrorBanner message={feed.error} />
       {restricted && !feed.loading ? (
         <div className="mb-4 rounded-lg border border-yellow-500/40 bg-yellow-500/10 p-3 text-sm">
